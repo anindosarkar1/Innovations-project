@@ -7,8 +7,10 @@ library("dplyr")
 library("expss")
 library('gtools')
 library("imputeTS")
+library("lubridate")
 library("jtools")
 library('plm')
+library('pracma')
 library("readxl")
 library("reshape2")
 library("stringr")
@@ -19,8 +21,8 @@ library("doBy")
 datafile1 <- ".\\Data\\KPSS_2020_public.csv\\KPSS_2020_public.csv"
 datafile2 <- ".\\Data\\patent_permco_permno_match_public_2020.csv\\patent_permco_permno_match_public_2020.csv"
 datafile3 <- ".\\Data\\Sec_CDS_data_v1.xlsx"
-datafile4 <- ".\\Data\\Sec_CDS_data_v2.xlsx"
-datafile5 <- ".\\Code\\compustat_v2.csv"
+datafile4 <- ""
+datafile5 <- ""
 datafile6 <- ".\\Code\\CDScusipmatch.xlsx"
 datafile7 <- ".\\Code\\CRSP_identifiers.csv"
 datafile8 <- ".\\Code\\RnD.csv"
@@ -125,9 +127,6 @@ save(compustatfile ,file=".\\Code\\compustatfile.rda")
 write.table(compustatfile, ".\\Code\\compustatfile.csv", sep = ",", row.names = FALSE, col.names = TRUE )
 
 #'*Analysis static ---------------------------------------------------------------------------*
-#temp3 = read_excel(datafile6)
-#temp4 = merge(x=temp2,y=temp3,by="security_id",all.x=TRUE)
-
 # First merge the compustats file with the patents static file
 temp1 = merge(patentsstatic, compustatfile, by = 'cusip', all.x = TRUE)
 temp1 = na.omit(temp1)
@@ -174,12 +173,14 @@ analysispanel = temp5
 dupidx = duplicated(analysispanel, by = c("cusip", "yearmonth")) # Remove some residual duplicates
 analysispanel = analysispanel[!dupidx,]
 analysispanel = distinct(analysispanel, cusip, yearmonth, .keep_all = TRUE)
+
+# Make the yearmonth in date format for figures and stuff
+analysispanel$ymdate = as.Date(paste(substr(analysispanel$yearmonth, 1,4), "-",  substr(analysispanel$yearmonth, 5,6), "-01", sep = ""))
+
 #'*Fixed effects regression -------------------------------------------------------------------------*
-#blah = analysispanel
-yearmonth = ymd(analysispanel$yearmonth)
-analysispanel<-pdata.frame(analysispanel,index=c('cusip', 'yearmonth'), drop.index = TRUE) 
-analysispanel$lag_cdsspread=plm::lag(analysispanel$cdsspread,3)
-#panel <-transform(panel, )
+
+panel<-pdata.frame(analysispanel,index=c('cusip', 'ymdate'), drop.index = FALSE) 
+panel$lag_cdsspread=plm::lag(panel$cdsspread,24)
 panel = cbind(panel, lag_cdsspread)
  
 panel$inter = panel$quantile*panel$lag_cdsspread # Interaction term
@@ -206,23 +207,4 @@ table1 = insert_row(table1,c('Size bin FE','No','No','No','No','Yes','Yes' ), af
 print('************************************ TABLE 1: Effect of credit constraints on innovation **************************************')
 table1
 #'*Figures ------------------------------------------------------------------------------------------*
-temp1 = read.csv(datafile8, header=TRUE, stringsAsFactors = FALSE)
-colnames(temp1)[5] = 'logRnD'
-temp1$year = as.integer(substr(temp1$DATE,1,4))
-temp1$month = as.integer(substr(temp1$DATE,6,7))
-temp1$yearmonth = temp1$year*100 + temp1$month
-
-DATE = ymd(temp1$DATE)
-yearmonth = ymd(temp1$yearmonth)
-p <- ggplot(temp1, aes(x=yearmonth, y=logRnD, group =1) ) + geom_line() + xlab("")
-
-cdspanel$year = as.integer(substr(cdspanel$date, 7,10))
-cdspanel$month = as.integer(substr(cdspanel$date, 1,2))
-cdspanel$yearmonth = cdspanel$year*100 + cdspanel$month
-temp2 = aggregate(as.integer(cdspanel$cdsspread), list(cdspanel$yearmonth), mean, na.rm = TRUE)
-colnames(temp2) = c('yearmonth', 'avgcdsspreads')
-
-temp1 = merge(temp1, temp2, by = 'yearmonth', all.x = TRUE)
-temp3 = na.omit(temp1)
-
 

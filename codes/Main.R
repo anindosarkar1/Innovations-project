@@ -3,20 +3,27 @@ rm(list = ls())
 # This file processes the data that is the input to MATLAB for the Corporate default estimation model:
 # Run this code modelu by module. Each module is independent.
 #'*Load Libraries----------------------------------------------------------------------------------------------* 
+library("berryFunctions")
 library("dplyr")
 library("expss")
 library('gtools')
+library('huxtable')
 library("imputeTS")
 library("lubridate")
 library("jtools")
+library('outreg')
 library('plm')
 library('pracma')
 library("readxl")
 library("reshape2")
 library("stringr")
+library("tictoc")
 library("tidyverse")
 library("xtable")
 library("doBy")
+
+#'*Intro: -----------------------------------------------------------------------------------------------------*
+tic()
 #'*Set directories---------------------------------------------------------------------------------------------*
 datafile1 <- ".\\Data\\KPSS_2020_public.csv\\KPSS_2020_public.csv"
 datafile2 <- ".\\Data\\patent_permco_permno_match_public_2020.csv\\patent_permco_permno_match_public_2020.csv"
@@ -180,8 +187,7 @@ analysispanel$ymdate = as.Date(paste(substr(analysispanel$yearmonth, 1,4), "-", 
 #'*Fixed effects regression -------------------------------------------------------------------------*
 
 panel<-pdata.frame(analysispanel,index=c('cusip', 'ymdate'), drop.index = FALSE) 
-panel$lag_cdsspread=plm::lag(panel$cdsspread,24)
-panel = cbind(panel, lag_cdsspread)
+panel$lag_cdsspread=plm::lag(panel$cdsspread,1)
  
 panel$inter = panel$quantile*panel$lag_cdsspread # Interaction term
 
@@ -197,14 +203,58 @@ model4 <-lm(cites ~ lag_cdsspread + inter + factor(cusip) - 1, data=panel)
 model5 <-lm(num_patents ~ lag_cdsspread + inter + factor(sizequantile) + factor(sic) + factor(cusip) - 1, data=panel)
 model6 <-lm(cites ~ lag_cdsspread + inter + factor(sizequantile) + factor(sic) + factor(cusip) - 1, data = panel)
 
-export_summs(model1, model2, model3, model4, model5, model6, digits =4)
+#export_summs(model1, model2, model3, model4, model5, model6, digits =4)
 
-table1 = huxreg(model1, model2, model3, model4, model5, model6)
-table1 = table1[c(1:2,100,184:188),]
-table1[3,1] = '(lag cds spreads) x (mkt to book)'
-table1 = insert_row(table1,c('Industry FE','No','No','No','No','Yes','Yes' ), after = 3,fill = NULL,colspan = 1,copy_cell_props = TRUE)
-table1 = insert_row(table1,c('Size bin FE','No','No','No','No','Yes','Yes' ), after = 4,fill = NULL,colspan = 1,copy_cell_props = TRUE)
-print('************************************ TABLE 1: Effect of credit constraints on innovation **************************************')
+#table1 = huxreg(model1, model2, model3, model4, model5, model6)
+#table1 = table1[c(1:2,100,184:188),]
+#table1[3,1] = '(lag cds spreads) x (mkt to book)'
+#table1 = insert_row(table1,c('Industry FE','No','No','No','No','Yes','Yes' ), after = 3,fill = NULL,colspan = 1,copy_cell_props = TRUE)
+#table1 = insert_row(table1,c('Size bin FE','No','No','No','No','Yes','Yes' ), after = 4,fill = NULL,colspan = 1,copy_cell_props = TRUE)
+#print('************************************ TABLE 1: Effect of credit constraints on innovation **************************************')
+#table1
+
+
+table1 = outreg(list(model1, model2, model3, model4, model5, model6), digits = 3)
+for (i in 1:(nrow(table1)-1)){ 
+  if(grepl("factor",table1$.variable[i])){
+    table1$.variable[i+1] = "marked"
+  }
+}
+table1 = table1[!grepl("factor", table1$.variable),]
+table1 = table1[!grepl("marked", table1$.variable),]
+table1 = insertRows(table1, c(5,6), new = NA)
+table1$.stat[1] = "lag cds"
+table1$.stat[2] = ""
+table1$.stat[3] = "lag cds x market to book"
+table1$.stat[4] = ""
+table1 = table1[, c(-1)]
+table1[5,] = c("Industry FE", "No", "No", "No", "No", "Yes", "Yes" )
+table1[6,] = c("Size bin FE", "No", "No", "No", "No", "Yes", "Yes" )
+colnames(table1) = c("Variable", "# patents", "# cites", "# patents", "# cites", "# patents", "# cites")
 table1
-#'*Figures ------------------------------------------------------------------------------------------*
 
+print(xtable(table1, type = "latex", digits = 3), file = "table1.tex", include.rownames=FALSE)
+#'*Figures ------------------------------------------------------------------------------------------*
+# temp1 = read.csv(datafile8, header=TRUE, stringsAsFactors = FALSE)
+# colnames(temp1)[5] = 'logRnD'
+# temp1$year = as.integer(substr(temp1$DATE,1,4))
+# temp1$month = as.integer(substr(temp1$DATE,6,7))
+# temp1$yearmonth = temp1$year*100 + temp1$month
+# 
+# DATE = ymd(temp1$DATE)
+# yearmonth = ymd(temp1$yearmonth)
+# p <- ggplot(temp1, aes(x=yearmonth, y=logRnD, group =1) ) + geom_line() + xlab("")
+# 
+# cdspanel$year = as.integer(substr(cdspanel$date, 7,10))
+# cdspanel$month = as.integer(substr(cdspanel$date, 1,2))
+# cdspanel$yearmonth = cdspanel$year*100 + cdspanel$month
+# temp2 = aggregate(as.integer(cdspanel$cdsspread), list(cdspanel$yearmonth), mean, na.rm = TRUE)
+# colnames(temp2) = c('yearmonth', 'avgcdsspreads')
+# 
+# temp1 = merge(temp1, temp2, by = 'yearmonth', all.x = TRUE)
+# temp3 = na.omit(temp1)
+# 
+# temp3$lRnDdetrend = detrend(temp3$logRnD, tt = 'linear')
+# 
+#'* OUTRO:------------------------------------------------------------------------------------------------------------*
+toc()
